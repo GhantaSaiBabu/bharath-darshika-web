@@ -82,6 +82,9 @@ export default function Home() {
             <h4>Legal</h4>
             <button onClick={() => setActiveModal('privacy')} style={styles.fLinkBtn}>Privacy Policy</button>
             <button onClick={() => setActiveModal('terms')} style={styles.fLinkBtn}>Terms & Conditions</button>
+            <Link to="/login" style={{...styles.fLinkBtn, fontSize: '10px', marginTop: '10px', opacity: 0.3}}>
+           Staff Portal
+         </Link>
           </div>
           <div style={styles.footerLinks}>
             <h4>Connect</h4>
