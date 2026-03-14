@@ -5,27 +5,31 @@ import {
 } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Plus, Edit3, Trash2, MapPin, Layers, LogOut, 
-  ChevronDown, ChevronRight, Search, Sparkles, CheckSquare, Square, Youtube, Navigation 
+  Edit3, Trash2, Layers, LogOut, ChevronDown, ChevronRight, 
+  Search, Navigation, Map, Image as ImageIcon, CheckCircle 
 } from 'lucide-react';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [places, setPlaces] = useState([]);
+  const [statesList, setStatesList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState(null);
+  const [activeTab, setActiveTab] = useState('places'); // 'places' or 'states'
   const [expandedZones, setExpandedZones] = useState({ "South India": true });
-  const [selectedItems, setSelectedItems] = useState([]);
 
+  // 📝 Combined Form Data
   const [formData, setFormData] = useState({
     name: '', state: '', zone: 'South India', category: 'Hidden Gems', 
     history: '', mystery: '', img: '', location: '', nearby_attractions: '', 
-    rentora_suitable: 'No', is_hidden_gem: false, yt_link: ''
+    rentora_suitable: 'No', is_hidden_gem: false, yt_link: '',
+    quote: '', capital: ''
   });
 
   const zones = ['South India', 'North India', 'West India', 'East India', '💎 Hidden Gems'];
+  const zoneMapping = { "South India": "z1", "North India": "z2", "West India": "z3", "East India": "z4" };
 
   useEffect(() => {
     if (localStorage.getItem('isAdmin') !== 'true') navigate('/login');
@@ -37,163 +41,188 @@ export default function AdminDashboard() {
     try {
       const pSnap = await getDocs(collection(db, "Places"));
       const gSnap = await getDocs(collection(db, "HiddenGems"));
-      const combined = [
+      const sSnap = await getDocs(collection(db, "States"));
+      
+      const combinedPlaces = [
         ...pSnap.docs.map(d => ({ id: d.id, ...d.data(), is_hidden_gem: false })),
         ...gSnap.docs.map(d => ({ id: d.id, ...d.data(), is_hidden_gem: true }))
       ];
-      setPlaces(combined);
+      setPlaces(combinedPlaces);
+      setStatesList(sSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) { console.error("Fetch Error:", e); }
     setLoading(false);
   };
 
   const handleSave = async () => {
-    if (!formData.name || !formData.state) return alert("పేరు మరియు రాష్ట్రం తప్పనిసరి బొస్సు!");
-    
-    // 🔥 రాజస్థాన్ ఇష్యూ ఫిక్స్: సేవ్ చేసేటప్పుడే మనం సెలెక్ట్ చేసిన జోన్ ని పక్కాగా పంపిస్తున్నాం
-    const targetCol = formData.is_hidden_gem ? "HiddenGems" : "Places";
-    const dataToSave = {
-      ...formData,
-      zone: formData.is_hidden_gem ? "North India" : formData.zone // Hidden Gems కి డీఫాల్ట్ జోన్
-    };
+    if (!formData.name) return alert("పేరు తప్పనిసరి బొస్సు!");
 
     try {
-      if (isEditing) {
-        await updateDoc(doc(db, targetCol, currentId), dataToSave);
-        alert("అప్‌డేట్ అయ్యింది! ✅");
+      if (activeTab === 'places') {
+        const targetCol = formData.is_hidden_gem ? "HiddenGems" : "Places";
+        const data = { ...formData, zone: formData.is_hidden_gem ? "North India" : formData.zone };
+        if (isEditing) await updateDoc(doc(db, targetCol, currentId), data);
+        else await addDoc(collection(db, targetCol), data);
       } else {
-        await addDoc(collection(db, targetCol), dataToSave);
-        alert("యాడ్ అయ్యింది! 🚀");
+        const stateData = { 
+          name: formData.name, capital: formData.capital, 
+          quote: formData.quote, img: formData.img, 
+          zoneId: zoneMapping[formData.zone] || "z1" 
+        };
+        if (isEditing) await updateDoc(doc(db, "States", currentId), stateData);
+        else await addDoc(collection(db, "States"), stateData);
       }
-      resetForm();
-      fetchData();
+      alert("సక్సెస్ ఫుల్ గా సేవ్ అయ్యింది! 🎯");
+      resetForm(); fetchData();
     } catch (e) { alert(e.message); }
   };
 
   const resetForm = () => {
-    setFormData({ name: '', state: '', zone: 'South India', category: 'Hidden Gems', history: '', mystery: '', img: '', location: '', nearby_attractions: '', rentora_suitable: 'No', is_hidden_gem: false, yt_link: '' });
+    setFormData({ name: '', state: '', zone: 'South India', category: 'Hidden Gems', history: '', mystery: '', img: '', location: '', nearby_attractions: '', rentora_suitable: 'No', is_hidden_gem: false, yt_link: '', quote: '', capital: '' });
     setIsEditing(false);
     setCurrentId(null);
   };
 
-  const toggleZone = (z) => setExpandedZones(prev => ({ ...prev, [z]: !prev[z] }));
-
-  const handleDelete = async (id, isGem) => {
+  const handleDelete = async (id, type) => {
     if (window.confirm("డిలీట్ చేయమంటావా బాస్?")) {
-      await deleteDoc(doc(db, isGem ? "HiddenGems" : "Places", id));
+      const col = type === 'gem' ? "HiddenGems" : type === 'state' ? "States" : "Places";
+      await deleteDoc(doc(db, col, id));
       fetchData();
     }
   };
 
-  const handleBulkDelete = async () => {
-    if (!window.confirm(`${selectedItems.length} ఐటమ్స్ డిలీట్ చేయమంటావా?`)) return;
-    const batch = writeBatch(db);
-    selectedItems.forEach(id => {
-      const item = places.find(p => p.id === id);
-      batch.delete(doc(db, item.is_hidden_gem ? "HiddenGems" : "Places", id));
-    });
-    await batch.commit();
-    setSelectedItems([]);
-    fetchData();
-  };
-
-  // --- 🔥 అసలైన రాజస్థాన్ జోన్ ఫిక్స్ ఇక్కడ ఉంది ---
-  const getFilteredItems = (zoneName) => {
+  const getFilteredPlaces = (zoneName) => {
     return places.filter(p => {
-      const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            p.state.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      if (zoneName === '💎 Hidden Gems') return p.is_hidden_gem && matchesSearch;
-      
-      // పక్కాగా జోన్ మ్యాచ్ అవ్వాలి + అది హిడెన్ జెమ్ కాకూడదు
-      const pZone = p.zone || 'South India'; 
-      return pZone === zoneName && !p.is_hidden_gem && matchesSearch;
+      const match = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.state.toLowerCase().includes(searchTerm.toLowerCase());
+      if (zoneName === '💎 Hidden Gems') return p.is_hidden_gem && match;
+      return (p.zone || 'South India') === zoneName && !p.is_hidden_gem && match;
     });
   };
 
-  if (loading) return <div style={styles.loader}>మాస్టర్ డేటా లోడ్ అవుతోంది... ⏳</div>;
+  if (loading) return <div style={styles.loader}>డేటా లోడ్ అవుతోంది... ⏳</div>;
 
   return (
     <div style={styles.container}>
-      {/* TOP BAR */}
+      {/* 🚀 TOP NAVIGATION */}
       <div style={styles.nav}>
         <div style={styles.brand}><Layers color="#FF7A00" size={28} /> <h2>Darshika <span style={{color: '#94A3B8'}}>CMS</span></h2></div>
+        
+        <div style={styles.tabContainer}>
+            <button onClick={() => {setActiveTab('places'); resetForm();}} style={activeTab === 'places' ? styles.activeTab : styles.inactiveTab}><Navigation size={18}/> Manage Places</button>
+            <button onClick={() => {setActiveTab('states'); resetForm();}} style={activeTab === 'states' ? styles.activeTab : styles.inactiveTab}><Map size={18}/> Manage States</button>
+        </div>
+
         <div style={styles.searchWrap}>
           <Search size={18} color="#94A3B8" />
-          <input placeholder="వెతకండి బాస్ (Place or State)..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={styles.search} />
+          <input placeholder="Search Database..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={styles.search} />
         </div>
-        <button onClick={() => { localStorage.clear(); navigate('/login'); }} style={styles.logout}><LogOut size={18} /></button>
+        <button onClick={() => { localStorage.clear(); navigate('/login'); }} style={styles.logout}><LogOut size={20} /></button>
       </div>
 
       <div style={styles.wrapper}>
-        {/* SIDE FORM */}
+        {/* 🛠️ FORM SIDE */}
         <div style={styles.formSide}>
           <div style={styles.card}>
-            <h3 style={{margin: 0, color: '#0F4C81'}}>{isEditing ? "✏️ Edit Gem" : "➕ Add New Gem"}</h3>
-            <div style={styles.formGrid}>
-              <input placeholder="Place Name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={styles.input} />
-              <input placeholder="State (e.g. Rajasthan)" value={formData.state} onChange={e => setFormData({...formData, state: e.target.value})} style={styles.input} />
-              <select value={formData.zone} onChange={e => setFormData({...formData, zone: e.target.value})} style={styles.input}>
-                {zones.filter(z => z !== '💎 Hidden Gems').map(z => <option key={z} value={z}>{z}</option>)}
-              </select>
-              <select value={formData.is_hidden_gem} onChange={e => setFormData({...formData, is_hidden_gem: e.target.value === 'true'})} style={styles.input}>
-                <option value="false">Regular Place</option>
-                <option value="true">Hidden Gem 💎</option>
-              </select>
-              <input placeholder="Image URL" value={formData.img} onChange={e => setFormData({...formData, img: e.target.value})} style={styles.input} />
-              <input placeholder="YouTube Link" value={formData.yt_link} onChange={e => setFormData({...formData, yt_link: e.target.value})} style={styles.input} />
+            <div style={styles.cardHeader}>
+                <h3 style={{margin: 0}}>{isEditing ? "✏️ Edit Record" : "➕ Add Entry"}</h3>
+                <span style={styles.tabIndicator}>{activeTab.toUpperCase()}</span>
             </div>
-            <textarea placeholder="Mystery / History (Telugu)" value={formData.history} style={styles.textarea} onChange={e => setFormData({...formData, history: e.target.value})} />
-            <input placeholder="Nearby Attractions" value={formData.nearby_attractions} style={styles.input} onChange={e => setFormData({...formData, nearby_attractions: e.target.value})} />
+            
+            <div style={styles.formGrid}>
+              <div style={{gridColumn: 'span 2'}}>
+                  <label style={styles.label}>{activeTab === 'places' ? "Place Name" : "State Name"}</label>
+                  <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={styles.input} />
+              </div>
+              
+              <div>
+                  <label style={styles.label}>{activeTab === 'places' ? "State" : "Capital"}</label>
+                  <input value={activeTab === 'places' ? formData.state : formData.capital} onChange={e => setFormData({...formData, [activeTab === 'places' ? 'state' : 'capital']: e.target.value})} style={styles.input} />
+              </div>
+
+              <div>
+                  <label style={styles.label}>Zone</label>
+                  <select value={formData.zone} onChange={e => setFormData({...formData, zone: e.target.value})} style={styles.input}>
+                    {zones.filter(z => z !== '💎 Hidden Gems').map(z => <option key={z} value={z}>{z}</option>)}
+                  </select>
+              </div>
+
+              <div style={{gridColumn: 'span 2'}}>
+                  <label style={styles.label}>Image URL</label>
+                  <input value={formData.img} onChange={e => setFormData({...formData, img: e.target.value})} style={styles.input} />
+              </div>
+            </div>
+
+            {activeTab === 'places' ? (
+                <>
+                    <label style={styles.label}>History/Mystery</label>
+                    <textarea value={formData.history} style={styles.textarea} onChange={e => setFormData({...formData, history: e.target.value})} />
+                </>
+            ) : (
+                <>
+                    <label style={styles.label}>State Quote</label>
+                    <input value={formData.quote} style={styles.input} onChange={e => setFormData({...formData, quote: e.target.value})} />
+                </>
+            )}
             
             <div style={styles.btnRow}>
-              <button onClick={handleSave} style={styles.saveBtn}>{isEditing ? "Update Database" : "Publish to App"}</button>
+              <button onClick={handleSave} style={styles.saveBtn}>{isEditing ? "Update Data" : "Save to Firebase"}</button>
               {isEditing && <button onClick={resetForm} style={styles.cancelBtn}>Cancel</button>}
             </div>
           </div>
         </div>
 
-        {/* DATA LIST (ACCORDION) */}
+        {/* 📊 DATA LIST SIDE */}
         <div style={styles.listSide}>
-          <div style={styles.listHead}>
-            <h4 style={{margin: 0}}>Organized Database</h4>
-            {selectedItems.length > 0 && <button onClick={handleBulkDelete} style={styles.bulkBtn}>Delete Selected ({selectedItems.length})</button>}
-          </div>
-
-          {zones.map(zone => {
-            const items = getFilteredItems(zone);
-            return (
-              <div key={zone} style={styles.accordion}>
-                <div onClick={() => toggleZone(zone)} style={styles.accHead}>
-                  <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                    {expandedZones[zone] ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-                    <span style={{fontWeight: '800', fontSize: '16px'}}>{zone}</span>
-                    <span style={styles.badge}>{items.length}</span>
-                  </div>
-                </div>
-
-                {expandedZones[zone] && (
-                  <div style={styles.accBody}>
-                    {items.map(item => (
-                      <div key={item.id} style={styles.itemRow}>
-                        <div onClick={() => setSelectedItems(prev => prev.includes(item.id) ? prev.filter(i => i !== item.id) : [...prev, item.id])} style={{cursor: 'pointer'}}>
-                          {selectedItems.includes(item.id) ? <CheckSquare size={20} color="#FF7A00" /> : <Square size={20} color="#CBD5E1" />}
-                        </div>
-                        <img src={item.img} style={styles.thumb} alt="" />
-                        <div style={{flex: 1}}>
-                          <div style={{fontWeight: '700', fontSize: '14px'}}>{item.name}</div>
-                          <div style={{fontSize: '11px', color: '#64748B'}}>{item.state} | {item.location}</div>
-                        </div>
-                        <div style={{display: 'flex', gap: '10px'}}>
-                          <button onClick={() => { setFormData(item); setCurrentId(item.id); setIsEditing(true); window.scrollTo(0,0); }} style={styles.iconBtn}><Edit3 size={18}/></button>
-                          <button onClick={() => handleDelete(item.id, item.is_hidden_gem)} style={styles.iconBtnRed}><Trash2 size={18}/></button>
-                        </div>
+          {activeTab === 'places' ? (
+              zones.map(zone => {
+                const items = getFilteredPlaces(zone);
+                return (
+                  <div key={zone} style={styles.accordion}>
+                    <div onClick={() => setExpandedZones(p => ({...p, [zone]: !p[zone]}))} style={styles.accHead}>
+                      <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
+                        {expandedZones[zone] ? <ChevronDown size={20} color="#0F4C81"/> : <ChevronRight size={20} color="#64748B"/>}
+                        <span style={{fontWeight: '800', color: '#1E293B'}}>{zone}</span>
+                        <span style={styles.badge}>{items.length}</span>
                       </div>
-                    ))}
+                    </div>
+                    {expandedZones[zone] && (
+                      <div style={styles.accBody}>
+                        {items.map(item => (
+                          <div key={item.id} style={styles.itemRow}>
+                            <img src={item.img} style={styles.thumb} alt="" />
+                            <div style={{flex: 1}}>
+                              <div style={{fontWeight: '700', fontSize: '14px', color: '#0F4C81'}}>{item.name}</div>
+                              <div style={{fontSize: '11px', color: '#94A3B8'}}>{item.state}</div>
+                            </div>
+                            <div style={styles.actionBtns}>
+                              <button onClick={() => { setFormData(item); setCurrentId(item.id); setIsEditing(true); window.scrollTo(0,0); }} style={styles.editBtn}><Edit3 size={16}/></button>
+                              <button onClick={() => handleDelete(item.id, item.is_hidden_gem ? 'gem' : 'place')} style={styles.delBtn}><Trash2 size={16}/></button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                );
+              })
+          ) : (
+              <div style={styles.stateContainer}>
+                {statesList.map(st => (
+                    <div key={st.id} style={styles.stateCard}>
+                        <img src={st.img} style={styles.stateImg} alt="" />
+                        <div style={styles.stateOverlay}>
+                            <div style={{flex: 1}}>
+                                <div style={styles.stTitle}>{st.name}</div>
+                                <div style={styles.stCap}>{st.capital}</div>
+                            </div>
+                            <div style={styles.stActions}>
+                                <button onClick={() => { setFormData({...st, zone: Object.keys(zoneMapping).find(k => zoneMapping[k] === st.zoneId)}); setCurrentId(st.id); setIsEditing(true); window.scrollTo(0,0); }} style={styles.stEdit}><Edit3 size={14}/></button>
+                                <button onClick={() => handleDelete(st.id, 'state')} style={styles.stDel}><Trash2 size={14}/></button>
+                            </div>
+                        </div>
+                    </div>
+                ))}
               </div>
-            );
-          })}
+          )}
         </div>
       </div>
     </div>
@@ -201,29 +230,44 @@ export default function AdminDashboard() {
 }
 
 const styles = {
-  container: { backgroundColor: '#F1F5F9', minHeight: '100vh', fontFamily: 'Inter, sans-serif' },
-  nav: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 5%', backgroundColor: '#fff', borderBottom: '1px solid #E2E8F0', position: 'sticky', top: 0, zIndex: 100 },
+  container: { backgroundColor: '#F8FAFC', minHeight: '100vh', fontFamily: "'Plus Jakarta Sans', sans-serif" },
+  nav: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 4%', backgroundColor: '#fff', borderBottom: '1px solid #E2E8F0', position: 'sticky', top: 0, zIndex: 1000 },
   brand: { display: 'flex', alignItems: 'center', gap: '10px' },
-  searchWrap: { display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#F8FAFC', padding: '10px 20px', borderRadius: '15px', border: '1px solid #E2E8F0', flex: 0.5 },
-  search: { border: 'none', background: 'none', outline: 'none', width: '100%', fontSize: '14px' },
-  logout: { backgroundColor: '#FEE2E2', border: 'none', padding: '10px', borderRadius: '10px', color: '#EF4444', cursor: 'pointer' },
-  wrapper: { display: 'grid', gridTemplateColumns: '400px 1fr', gap: '30px', padding: '30px 5%' },
-  card: { backgroundColor: '#fff', padding: '30px', borderRadius: '25px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', position: 'sticky', top: '100px' },
+  tabContainer: { display: 'flex', backgroundColor: '#F1F5F9', padding: '4px', borderRadius: '12px' },
+  activeTab: { border: 'none', backgroundColor: '#fff', padding: '10px 20px', borderRadius: '10px', fontWeight: '800', color: '#FF7A00', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' },
+  inactiveTab: { border: 'none', backgroundColor: 'transparent', padding: '10px 20px', borderRadius: '10px', color: '#64748B', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' },
+  searchWrap: { display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#F1F5F9', padding: '10px 18px', borderRadius: '14px', flex: 0.4 },
+  search: { border: 'none', background: 'none', outline: 'none', width: '100%', fontSize: '14px', fontWeight: '600' },
+  logout: { backgroundColor: '#FEF2F2', border: 'none', padding: '10px', borderRadius: '12px', color: '#EF4444', cursor: 'pointer' },
+  wrapper: { display: 'grid', gridTemplateColumns: '420px 1fr', gap: '30px', padding: '30px 4%' },
+  formSide: { position: 'sticky', top: '100px', height: 'fit-content' },
+  card: { backgroundColor: '#fff', padding: '25px', borderRadius: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.03)', border: '1px solid #F1F5F9' },
+  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' },
+  tabIndicator: { backgroundColor: '#FF7A0015', color: '#FF7A00', padding: '4px 12px', borderRadius: '8px', fontSize: '10px', fontWeight: '900' },
+  label: { display: 'block', fontSize: '12px', fontWeight: '800', color: '#64748B', marginBottom: '6px', marginLeft: '4px' },
   formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' },
-  input: { padding: '12px', borderRadius: '12px', border: '1px solid #E2E8F0', fontSize: '13px', backgroundColor: '#F8FAFC', outline: 'none' },
-  textarea: { width: '100%', height: '100px', padding: '12px', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '10px', boxSizing: 'border-box', fontFamily: 'inherit', backgroundColor: '#F8FAFC', outline: 'none' },
-  saveBtn: { flex: 1, backgroundColor: '#0F4C81', color: '#fff', border: 'none', padding: '15px', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' },
-  cancelBtn: { backgroundColor: '#94A3B8', color: '#fff', border: 'none', padding: '15px', borderRadius: '12px', cursor: 'pointer', marginLeft: '10px' },
+  input: { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #E2E8F0', fontSize: '14px', backgroundColor: '#F8FAFC', outline: 'none', boxSizing: 'border-box', fontWeight: '600' },
+  textarea: { width: '100%', height: '120px', padding: '14px', borderRadius: '14px', border: '1px solid #E2E8F0', marginBottom: '15px', boxSizing: 'border-box', backgroundColor: '#F8FAFC', outline: 'none', fontWeight: '600' },
+  saveBtn: { flex: 1, backgroundColor: '#1E293B', color: '#fff', border: 'none', padding: '16px', borderRadius: '14px', fontWeight: '800', cursor: 'pointer', transition: '0.3s' },
+  cancelBtn: { backgroundColor: '#CBD5E1', color: '#475569', border: 'none', padding: '16px', borderRadius: '14px', cursor: 'pointer', marginLeft: '10px', fontWeight: '800' },
   btnRow: { display: 'flex' },
-  listHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
-  bulkBtn: { backgroundColor: '#EF4444', color: '#fff', border: 'none', padding: '8px 15px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' },
-  accordion: { backgroundColor: '#fff', borderRadius: '20px', marginBottom: '15px', border: '1px solid #E2E8F0', overflow: 'hidden' },
-  accHead: { padding: '20px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff' },
-  badge: { backgroundColor: '#F1F5F9', padding: '2px 10px', borderRadius: '10px', fontSize: '12px', color: '#64748B' },
+  accordion: { backgroundColor: '#fff', borderRadius: '20px', marginBottom: '16px', border: '1px solid #E2E8F0', overflow: 'hidden' },
+  accHead: { padding: '20px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  badge: { backgroundColor: '#F1F5F9', padding: '4px 12px', borderRadius: '10px', fontSize: '12px', color: '#0F4C81', fontWeight: '800' },
   accBody: { padding: '0 20px 20px 20px' },
-  itemRow: { display: 'flex', alignItems: 'center', gap: '15px', padding: '12px 0', borderBottom: '1px solid #F8FAFC' },
-  thumb: { width: '45px', height: '45px', borderRadius: '10px', objectFit: 'cover' },
-  iconBtn: { background: 'none', border: 'none', color: '#0F4C81', cursor: 'pointer' },
-  iconBtnRed: { background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer' },
-  loader: { textAlign: 'center', padding: '100px', fontSize: '20px', fontWeight: 'bold' }
+  itemRow: { display: 'flex', alignItems: 'center', gap: '15px', padding: '14px 0', borderBottom: '1px solid #F8FAFC' },
+  thumb: { width: '48px', height: '48px', borderRadius: '12px', objectFit: 'cover' },
+  actionBtns: { display: 'flex', gap: '8px' },
+  editBtn: { background: '#F0F9FF', border: 'none', color: '#0369A1', padding: '8px', borderRadius: '10px', cursor: 'pointer' },
+  delBtn: { background: '#FEF2F2', border: 'none', color: '#EF4444', padding: '8px', borderRadius: '10px', cursor: 'pointer' },
+  stateContainer: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '20px' },
+  stateCard: { height: '160px', borderRadius: '24px', overflow: 'hidden', position: 'relative', elevation: 5 },
+  stateImg: { width: '100%', height: '100%', objectFit: 'cover' },
+  stateOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: '15px', background: 'linear-gradient(transparent, rgba(0,0,0,0.8))', flexDirection: 'row', display: 'flex', alignItems: 'center' },
+  stTitle: { color: '#fff', fontWeight: '900', fontSize: '16px' },
+  stCap: { color: 'rgba(255,255,255,0.7)', fontSize: '11px', fontWeight: '600' },
+  stActions: { display: 'flex', gap: '6px' },
+  stEdit: { backgroundColor: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', padding: '6px', borderRadius: '8px', cursor: 'pointer' },
+  stDel: { backgroundColor: 'rgba(239,68,68,0.2)', border: 'none', color: '#FCA5A5', padding: '6px', borderRadius: '8px', cursor: 'pointer' },
+  loader: { textAlign: 'center', padding: '100px', fontSize: '18px', fontWeight: '800', color: '#0F4C81' }
 };
