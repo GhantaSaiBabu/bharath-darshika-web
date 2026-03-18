@@ -164,6 +164,7 @@ export default function AdminDashboard() {
 
   return (
     <div style={styles.container}>
+      {/* 🚀 TOP NAVIGATION */}
       <div style={styles.nav}>
         <div style={styles.brand}><Layers color="#FF7A00" size={28} /> <h2>Darshika <span style={{color: '#94A3B8'}}>CMS</span></h2></div>
         <div style={styles.tabContainer}>
@@ -180,8 +181,8 @@ export default function AdminDashboard() {
       </div>
 
       <div style={styles.wrapper}>
-        {/* 🛠️ FORM SIDE (Only for Places & States) */}
-        {activeTab !== 'notifications' && activeTab !== 'bulk' && (
+        {/* 🛠️ LEFT SIDE: FORM (Only for Places & States) */}
+        {(activeTab === 'places' || activeTab === 'states') && (
           <div style={styles.formSide}>
             <div style={styles.card}>
               <div style={styles.cardHeader}>
@@ -227,10 +228,10 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 📊 DATA LIST / BULK / NOTIFICATIONS SIDE */}
+        {/* 📊 RIGHT SIDE: CONTENT AREA */}
         <div style={(activeTab === 'notifications' || activeTab === 'bulk') ? styles.bulkWrapper : styles.listSide}>
           
-          {/* 📂 BULK UPLOAD PANEL */}
+          {/* 📂 BULK UPLOAD VIEW */}
           {activeTab === 'bulk' && (
             <div style={styles.bulkCard}>
               <div style={{width: '70px', height: '70px', borderRadius: '50%', backgroundColor: '#F1F5F9', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 auto 20px'}}>
@@ -242,7 +243,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* 🔔 NOTIFICATION PANEL */}
+          {/* 🔔 NOTIFICATIONS VIEW */}
           {activeTab === 'notifications' && (
             <div style={styles.bulkCard}>
               <div style={{width: '70px', height: '70px', borderRadius: '50%', backgroundColor: '#FFF7ED', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 auto 20px'}}>
@@ -252,19 +253,19 @@ export default function AdminDashboard() {
               <p style={{color: '#64748B', marginBottom: '30px', fontSize: '14px'}}>యాప్ యూజర్లందరికీ ఒకేసారి మెసేజ్ పంపండి.</p>
               <div style={{textAlign: 'left', marginBottom: '15px'}}>
                 <label style={styles.label}>Title</label>
-                <input placeholder="Notification Title..." value={notifData.title} onChange={e => setNotifData({...notifData, title: e.target.value})} style={styles.input} />
+                <input placeholder="Title..." value={notifData.title} onChange={e => setNotifData({...notifData, title: e.target.value})} style={styles.input} />
               </div>
               <div style={{textAlign: 'left', marginBottom: '20px'}}>
-                <label style={styles.label}>Message</label>
-                <textarea placeholder="Notification Body..." value={notifData.message} onChange={e => setNotifData({...notifData, message: e.target.value})} style={styles.textarea} />
+                <label style={styles.label}>Message Body</label>
+                <textarea placeholder="Write message here..." value={notifData.message} onChange={e => setNotifData({...notifData, message: e.target.value})} style={styles.textarea} />
               </div>
               <button onClick={sendPushNotifications} disabled={isSending} style={{...styles.saveBtn, backgroundColor: isSending ? '#94A3B8' : '#FF7A00', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px'}}>
-                {isSending ? "Sending... 🚀" : "Broadcast Notification"} {!isSending && <Send size={18} />}
+                {isSending ? "Sending..." : "Broadcast Now"} <Send size={18} />
               </button>
             </div>
           )}
 
-          {/* Existing Lists */}
+          {/* 📍 PLACES LIST VIEW */}
           {activeTab === 'places' && zones.map(zone => {
             const items = getFilteredPlaces(zone);
             return (
@@ -296,6 +297,8 @@ export default function AdminDashboard() {
               </div>
             );
           })}
+
+          {/* 🗺️ STATES LIST VIEW */}
           {activeTab === 'states' && (
               <div style={styles.stateContainer}>
                 {statesList.map(st => (
