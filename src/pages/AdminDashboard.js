@@ -6,7 +6,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { 
   Edit3, Trash2, Layers, LogOut, ChevronDown, ChevronRight, 
-  Search, Navigation, Map, Image as ImageIcon, CheckCircle 
+  Search, Navigation, Map, Image as ImageIcon, CheckCircle, UploadCloud, FileJson,
+  Bell, Send 
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -17,7 +18,7 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState(null);
-  const [activeTab, setActiveTab] = useState('places'); // 'places' or 'states'
+  const [activeTab, setActiveTab] = useState('places'); 
   const [expandedZones, setExpandedZones] = useState({ "South India": true });
 
   // 📝 Combined Form Data
@@ -27,6 +28,10 @@ export default function AdminDashboard() {
     rentora_suitable: 'No', is_hidden_gem: false, yt_link: '',
     quote: '', capital: ''
   });
+
+  // 🔔 Notification States
+  const [notifData, setNotifData] = useState({ title: '', message: '' });
+  const [isSending, setIsSending] = useState(false);
 
   const zones = ['South India', 'North India', 'West India', 'East India', '💎 Hidden Gems'];
   const zoneMapping = { "South India": "z1", "North India": "z2", "West India": "z3", "East India": "z4" };
@@ -53,9 +58,66 @@ export default function AdminDashboard() {
     setLoading(false);
   };
 
+  // 🚀 Notification Logic
+  const sendPushNotifications = async () => {
+    if (!notifData.title || !notifData.message) return alert("Title and Message are required!");
+    setIsSending(true);
+    try {
+      const tokenSnap = await getDocs(collection(db, "pushTokens"));
+      const tokens = tokenSnap.docs.map(doc => doc.data().token);
+      if (tokens.length === 0) {
+        alert("డేటాబేస్ లో టోకెన్లు లేవు బాస్!");
+        setIsSending(false);
+        return;
+      }
+      const messages = tokens.map(token => ({
+        to: token,
+        sound: 'default',
+        title: notifData.title,
+        body: notifData.message,
+        data: { screen: '/' }, 
+      }));
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(messages),
+      });
+      alert("✅ అందరికీ నోటిఫికేషన్ వెళ్ళిపోయింది బొస్సు!");
+      setNotifData({ title: '', message: '' });
+    } catch (error) {
+      alert("❌ ఏదో తప్పు జరిగింది!");
+    }
+    setIsSending(false);
+  };
+
+  // 📂 Bulk Upload Logic
+  const handleBulkUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const jsonData = JSON.parse(event.target.result);
+        if (!Array.isArray(jsonData)) return alert("JSON ఫైల్ Array ఫార్మాట్‌లో ఉండాలి బాస్!");
+        
+        const batch = writeBatch(db);
+        jsonData.forEach((item) => {
+          const colName = item.is_hidden_gem ? "HiddenGems" : "Places";
+          const newDocRef = doc(collection(db, colName));
+          batch.set(newDocRef, item);
+        });
+        await batch.commit();
+        alert("✅ Bulk Data Uploaded Successfully! 🎯");
+        fetchData();
+      } catch (err) {
+        alert("❌ Error parsing JSON file!");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const handleSave = async () => {
     if (!formData.name) return alert("పేరు తప్పనిసరి బొస్సు!");
-
     try {
       if (activeTab === 'places') {
         const targetCol = formData.is_hidden_gem ? "HiddenGems" : "Places";
@@ -102,15 +164,14 @@ export default function AdminDashboard() {
 
   return (
     <div style={styles.container}>
-      {/* 🚀 TOP NAVIGATION */}
       <div style={styles.nav}>
         <div style={styles.brand}><Layers color="#FF7A00" size={28} /> <h2>Darshika <span style={{color: '#94A3B8'}}>CMS</span></h2></div>
-        
         <div style={styles.tabContainer}>
             <button onClick={() => {setActiveTab('places'); resetForm();}} style={activeTab === 'places' ? styles.activeTab : styles.inactiveTab}><Navigation size={18}/> Manage Places</button>
             <button onClick={() => {setActiveTab('states'); resetForm();}} style={activeTab === 'states' ? styles.activeTab : styles.inactiveTab}><Map size={18}/> Manage States</button>
+            <button onClick={() => {setActiveTab('bulk');}} style={activeTab === 'bulk' ? styles.activeTab : styles.inactiveTab}><UploadCloud size={18}/> Bulk Upload</button>
+            <button onClick={() => {setActiveTab('notifications');}} style={activeTab === 'notifications' ? styles.activeTab : styles.inactiveTab}><Bell size={18}/> Notifications</button>
         </div>
-
         <div style={styles.searchWrap}>
           <Search size={18} color="#94A3B8" />
           <input placeholder="Search Database..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={styles.search} />
@@ -119,92 +180,123 @@ export default function AdminDashboard() {
       </div>
 
       <div style={styles.wrapper}>
-        {/* 🛠️ FORM SIDE */}
-        <div style={styles.formSide}>
-          <div style={styles.card}>
-            <div style={styles.cardHeader}>
-                <h3 style={{margin: 0}}>{isEditing ? "✏️ Edit Record" : "➕ Add Entry"}</h3>
-                <span style={styles.tabIndicator}>{activeTab.toUpperCase()}</span>
-            </div>
-            
-            <div style={styles.formGrid}>
-              <div style={{gridColumn: 'span 2'}}>
-                  <label style={styles.label}>{activeTab === 'places' ? "Place Name" : "State Name"}</label>
-                  <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={styles.input} />
+        {/* 🛠️ FORM SIDE (Only for Places & States) */}
+        {activeTab !== 'notifications' && activeTab !== 'bulk' && (
+          <div style={styles.formSide}>
+            <div style={styles.card}>
+              <div style={styles.cardHeader}>
+                  <h3 style={{margin: 0}}>{isEditing ? "✏️ Edit Record" : "➕ Add Entry"}</h3>
+                  <span style={styles.tabIndicator}>{activeTab.toUpperCase()}</span>
               </div>
-              
-              <div>
-                  <label style={styles.label}>{activeTab === 'places' ? "State" : "Capital"}</label>
-                  <input value={activeTab === 'places' ? formData.state : formData.capital} onChange={e => setFormData({...formData, [activeTab === 'places' ? 'state' : 'capital']: e.target.value})} style={styles.input} />
+              <div style={styles.formGrid}>
+                <div style={{gridColumn: 'span 2'}}>
+                    <label style={styles.label}>{activeTab === 'places' ? "Place Name" : "State Name"}</label>
+                    <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={styles.input} />
+                </div>
+                <div>
+                    <label style={styles.label}>{activeTab === 'places' ? "State" : "Capital"}</label>
+                    <input value={activeTab === 'places' ? formData.state : formData.capital} onChange={e => setFormData({...formData, [activeTab === 'places' ? 'state' : 'capital']: e.target.value})} style={styles.input} />
+                </div>
+                <div>
+                    <label style={styles.label}>Zone</label>
+                    <select value={formData.zone} onChange={e => setFormData({...formData, zone: e.target.value})} style={styles.input}>
+                      {zones.filter(z => z !== '💎 Hidden Gems').map(z => <option key={z} value={z}>{z}</option>)}
+                    </select>
+                </div>
+                <div style={{gridColumn: 'span 2'}}>
+                    <label style={styles.label}>Image URL</label>
+                    <input value={formData.img} onChange={e => setFormData({...formData, img: e.target.value})} style={styles.input} />
+                </div>
               </div>
-
-              <div>
-                  <label style={styles.label}>Zone</label>
-                  <select value={formData.zone} onChange={e => setFormData({...formData, zone: e.target.value})} style={styles.input}>
-                    {zones.filter(z => z !== '💎 Hidden Gems').map(z => <option key={z} value={z}>{z}</option>)}
-                  </select>
-              </div>
-
-              <div style={{gridColumn: 'span 2'}}>
-                  <label style={styles.label}>Image URL</label>
-                  <input value={formData.img} onChange={e => setFormData({...formData, img: e.target.value})} style={styles.input} />
-              </div>
-            </div>
-
-            {activeTab === 'places' ? (
+              {activeTab === 'places' ? (
                 <>
-                    <label style={styles.label}>History/Mystery</label>
-                    <textarea value={formData.history} style={styles.textarea} onChange={e => setFormData({...formData, history: e.target.value})} />
+                  <label style={styles.label}>History/Mystery</label>
+                  <textarea value={formData.history} style={styles.textarea} onChange={e => setFormData({...formData, history: e.target.value})} />
                 </>
-            ) : (
+              ) : (
                 <>
-                    <label style={styles.label}>State Quote</label>
-                    <input value={formData.quote} style={styles.input} onChange={e => setFormData({...formData, quote: e.target.value})} />
+                  <label style={styles.label}>State Quote</label>
+                  <input value={formData.quote} style={styles.input} onChange={e => setFormData({...formData, quote: e.target.value})} />
                 </>
-            )}
-            
-            <div style={styles.btnRow}>
-              <button onClick={handleSave} style={styles.saveBtn}>{isEditing ? "Update Data" : "Save to Firebase"}</button>
-              {isEditing && <button onClick={resetForm} style={styles.cancelBtn}>Cancel</button>}
+              )}
+              <div style={styles.btnRow}>
+                <button onClick={handleSave} style={styles.saveBtn}>{isEditing ? "Update Data" : "Save to Firebase"}</button>
+                {isEditing && <button onClick={resetForm} style={styles.cancelBtn}>Cancel</button>}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* 📊 DATA LIST SIDE */}
-        <div style={styles.listSide}>
-          {activeTab === 'places' ? (
-              zones.map(zone => {
-                const items = getFilteredPlaces(zone);
-                return (
-                  <div key={zone} style={styles.accordion}>
-                    <div onClick={() => setExpandedZones(p => ({...p, [zone]: !p[zone]}))} style={styles.accHead}>
-                      <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
-                        {expandedZones[zone] ? <ChevronDown size={20} color="#0F4C81"/> : <ChevronRight size={20} color="#64748B"/>}
-                        <span style={{fontWeight: '800', color: '#1E293B'}}>{zone}</span>
-                        <span style={styles.badge}>{items.length}</span>
-                      </div>
-                    </div>
-                    {expandedZones[zone] && (
-                      <div style={styles.accBody}>
-                        {items.map(item => (
-                          <div key={item.id} style={styles.itemRow}>
-                            <img src={item.img} style={styles.thumb} alt="" />
-                            <div style={{flex: 1}}>
-                              <div style={{fontWeight: '700', fontSize: '14px', color: '#0F4C81'}}>{item.name}</div>
-                              <div style={{fontSize: '11px', color: '#94A3B8'}}>{item.state}</div>
-                            </div>
-                            <div style={styles.actionBtns}>
-                              <button onClick={() => { setFormData(item); setCurrentId(item.id); setIsEditing(true); window.scrollTo(0,0); }} style={styles.editBtn}><Edit3 size={16}/></button>
-                              <button onClick={() => handleDelete(item.id, item.is_hidden_gem ? 'gem' : 'place')} style={styles.delBtn}><Trash2 size={16}/></button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+        {/* 📊 DATA LIST / BULK / NOTIFICATIONS SIDE */}
+        <div style={(activeTab === 'notifications' || activeTab === 'bulk') ? styles.bulkWrapper : styles.listSide}>
+          
+          {/* 📂 BULK UPLOAD PANEL */}
+          {activeTab === 'bulk' && (
+            <div style={styles.bulkCard}>
+              <div style={{width: '70px', height: '70px', borderRadius: '50%', backgroundColor: '#F1F5F9', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 auto 20px'}}>
+                <FileJson size={32} color="#475569" />
+              </div>
+              <h2 style={{color: '#1E293B', marginBottom: '10px'}}>Bulk JSON Upload 🚀</h2>
+              <p style={{color: '#64748B', marginBottom: '30px', fontSize: '14px'}}>JSON ఫైల్‌ని అప్‌లోడ్ చేసి డేటాను ఒకేసారి సెట్ చేయండి.</p>
+              <input type="file" accept=".json" onChange={handleBulkUpload} style={{border: '2px dashed #CBD5E1', padding: '30px', borderRadius: '20px', width: '100%', cursor: 'pointer'}} />
+            </div>
+          )}
+
+          {/* 🔔 NOTIFICATION PANEL */}
+          {activeTab === 'notifications' && (
+            <div style={styles.bulkCard}>
+              <div style={{width: '70px', height: '70px', borderRadius: '50%', backgroundColor: '#FFF7ED', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 auto 20px'}}>
+                <Bell size={32} color="#FF7A00" />
+              </div>
+              <h2 style={{color: '#1E293B', marginBottom: '10px'}}>Send Notification 🔔</h2>
+              <p style={{color: '#64748B', marginBottom: '30px', fontSize: '14px'}}>యాప్ యూజర్లందరికీ ఒకేసారి మెసేజ్ పంపండి.</p>
+              <div style={{textAlign: 'left', marginBottom: '15px'}}>
+                <label style={styles.label}>Title</label>
+                <input placeholder="Notification Title..." value={notifData.title} onChange={e => setNotifData({...notifData, title: e.target.value})} style={styles.input} />
+              </div>
+              <div style={{textAlign: 'left', marginBottom: '20px'}}>
+                <label style={styles.label}>Message</label>
+                <textarea placeholder="Notification Body..." value={notifData.message} onChange={e => setNotifData({...notifData, message: e.target.value})} style={styles.textarea} />
+              </div>
+              <button onClick={sendPushNotifications} disabled={isSending} style={{...styles.saveBtn, backgroundColor: isSending ? '#94A3B8' : '#FF7A00', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px'}}>
+                {isSending ? "Sending... 🚀" : "Broadcast Notification"} {!isSending && <Send size={18} />}
+              </button>
+            </div>
+          )}
+
+          {/* Existing Lists */}
+          {activeTab === 'places' && zones.map(zone => {
+            const items = getFilteredPlaces(zone);
+            return (
+              <div key={zone} style={styles.accordion}>
+                <div onClick={() => setExpandedZones(p => ({...p, [zone]: !p[zone]}))} style={styles.accHead}>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
+                    {expandedZones[zone] ? <ChevronDown size={20} color="#0F4C81"/> : <ChevronRight size={20} color="#64748B"/>}
+                    <span style={{fontWeight: '800', color: '#1E293B'}}>{zone}</span>
+                    <span style={styles.badge}>{items.length}</span>
                   </div>
-                );
-              })
-          ) : (
+                </div>
+                {expandedZones[zone] && (
+                  <div style={styles.accBody}>
+                    {items.map(item => (
+                      <div key={item.id} style={styles.itemRow}>
+                        <img src={item.img} style={styles.thumb} alt="" />
+                        <div style={{flex: 1}}>
+                          <div style={{fontWeight: '700', fontSize: '14px', color: '#0F4C81'}}>{item.name}</div>
+                          <div style={{fontSize: '11px', color: '#94A3B8'}}>{item.state}</div>
+                        </div>
+                        <div style={styles.actionBtns}>
+                          <button onClick={() => { setFormData(item); setCurrentId(item.id); setIsEditing(true); window.scrollTo(0,0); }} style={styles.editBtn}><Edit3 size={16}/></button>
+                          <button onClick={() => handleDelete(item.id, item.is_hidden_gem ? 'gem' : 'place')} style={styles.delBtn}><Trash2 size={16}/></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {activeTab === 'states' && (
               <div style={styles.stateContainer}>
                 {statesList.map(st => (
                     <div key={st.id} style={styles.stateCard}>
@@ -251,6 +343,7 @@ const styles = {
   saveBtn: { flex: 1, backgroundColor: '#1E293B', color: '#fff', border: 'none', padding: '16px', borderRadius: '14px', fontWeight: '800', cursor: 'pointer', transition: '0.3s' },
   cancelBtn: { backgroundColor: '#CBD5E1', color: '#475569', border: 'none', padding: '16px', borderRadius: '14px', cursor: 'pointer', marginLeft: '10px', fontWeight: '800' },
   btnRow: { display: 'flex' },
+  listSide: { display: 'block' },
   accordion: { backgroundColor: '#fff', borderRadius: '20px', marginBottom: '16px', border: '1px solid #E2E8F0', overflow: 'hidden' },
   accHead: { padding: '20px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   badge: { backgroundColor: '#F1F5F9', padding: '4px 12px', borderRadius: '10px', fontSize: '12px', color: '#0F4C81', fontWeight: '800' },
@@ -269,5 +362,7 @@ const styles = {
   stActions: { display: 'flex', gap: '6px' },
   stEdit: { backgroundColor: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', padding: '6px', borderRadius: '8px', cursor: 'pointer' },
   stDel: { backgroundColor: 'rgba(239,68,68,0.2)', border: 'none', color: '#FCA5A5', padding: '6px', borderRadius: '8px', cursor: 'pointer' },
-  loader: { textAlign: 'center', padding: '100px', fontSize: '18px', fontWeight: '800', color: '#0F4C81' }
+  loader: { textAlign: 'center', padding: '100px', fontSize: '18px', fontWeight: '800', color: '#0F4C81' },
+  bulkWrapper: { gridColumn: 'span 2', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' },
+  bulkCard: { backgroundColor: '#fff', padding: '50px', borderRadius: '35px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.05)', maxWidth: '500px', border: '1px solid #E2E8F0', width: '100%' }
 };
