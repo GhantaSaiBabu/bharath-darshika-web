@@ -1,0 +1,7 @@
+[[redirects]]
+  from = "/api/expo/*"
+  to = "https://exp.host/--/api/v2/push/send"
+  status = 200
+  force = true
+  [redirects.headers]
+    X-From = "Netlify"
