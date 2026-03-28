@@ -4,26 +4,32 @@ import { db } from '../firebaseConfig';
 import { collection, getDocs } from 'firebase/firestore';
 import { 
   Layers, LogOut, Navigation, Map, Bell, 
-  LayoutDashboard, UserCircle, Menu, X, ChevronRight, FileJson
+  LayoutDashboard, UserCircle, Menu, X, ChevronRight, FileJson,
+  UsersRound // 👈 కొత్త ఐకాన్
 } from 'lucide-react';
 
 import PlacesTab from './PlacesTab';
 import StatesTab from './StatesTab';
 import NotificationTab from './NotificationTab';
-import BulkUpload from './BulkUpload'; // 👈 కొత్తగా యాడ్ చేశాం
+import BulkUpload from './BulkUpload';
+import CreatorsTab from './creators'; // 👈 కొత్తగా క్రియేటర్స్ ట్యాబ్ ఇంపోర్ట్ చేశాం
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [counts, setCounts] = useState({ places: 0, states: 0 });
+  const [counts, setCounts] = useState({ places: 0, states: 0, creators: 0 }); // 👈 creators count యాడ్ చేశాం
   const [isSidebarOpen, setSidebarOpen] = useState(false);
 
-  // డేటా కౌంట్స్ తీసుకురావడానికి మరియు రిఫ్రెష్ చేయడానికి
   const fetchCounts = async () => {
     try {
       const pSnap = await getDocs(collection(db, "Places"));
       const sSnap = await getDocs(collection(db, "States"));
-      setCounts({ places: pSnap.size, states: sSnap.size });
+      const cSnap = await getDocs(collection(db, "Creators")); // 👈 క్రియేటర్స్ డేటా తెచ్చుకుంటున్నాం
+      setCounts({ 
+        places: pSnap.size, 
+        states: sSnap.size,
+        creators: cSnap.size // 👈 కౌంట్ సెట్ చేస్తున్నాం
+      });
     } catch (e) { console.error("Count Fetch Error:", e); }
   };
 
@@ -63,6 +69,10 @@ export default function AdminDashboard() {
           <NavButton active={activeTab === 'places'} onClick={() => {setActiveTab('places'); setSidebarOpen(false);}} icon={<Navigation size={20}/>} label="Places Management" />
           <NavButton active={activeTab === 'states'} onClick={() => {setActiveTab('states'); setSidebarOpen(false);}} icon={<Map size={20}/>} label="Regional States" />
           
+          <div style={{...styles.sectionLabel, marginTop: '20px'}}>COMMUNITY</div>
+          {/* 🚩 కొత్తగా క్రియేటర్స్ బటన్ యాడ్ చేశాం */}
+          <NavButton active={activeTab === 'creators'} onClick={() => {setActiveTab('creators'); setSidebarOpen(false);}} icon={<UsersRound size={20}/>} label="Creators Hub" />
+          
           <div style={{...styles.sectionLabel, marginTop: '20px'}}>DATA TOOLS</div>
           <NavButton active={activeTab === 'bulk'} onClick={() => {setActiveTab('bulk'); setSidebarOpen(false);}} icon={<FileJson size={20}/>} label="Bulk Integration" />
           <NavButton active={activeTab === 'notifications'} onClick={() => {setActiveTab('notifications'); setSidebarOpen(false);}} icon={<Bell size={20}/>} label="Push Broadcast" />
@@ -78,8 +88,8 @@ export default function AdminDashboard() {
             <div style={styles.statusDot} />
             <UserCircle size={35} color="#94A3B8" />
             <div style={{marginLeft: '10px'}}>
-               <div style={{color: '#fff', fontSize: '14px', fontWeight: '600'}}>Master Admin</div>
-               <div style={{color: '#64748B', fontSize: '11px'}}>Super Control</div>
+                <div style={{color: '#fff', fontSize: '14px', fontWeight: '600'}}>Master Admin</div>
+                <div style={{color: '#64748B', fontSize: '11px'}}>Super Control</div>
             </div>
           </div>
         </div>
@@ -103,6 +113,7 @@ export default function AdminDashboard() {
           {activeTab === 'states' && <StatesTab />}
           {activeTab === 'notifications' && <NotificationTab />}
           {activeTab === 'bulk' && <BulkUpload refresh={fetchCounts} />}
+          {activeTab === 'creators' && <CreatorsTab />} {/* 👈 క్రియేటర్స్ ట్యాబ్ ఇక్కడ చూపిస్తున్నాం */}
         </section>
       </main>
 
@@ -125,7 +136,7 @@ const HomeDashboard = ({ setActiveTab, counts }) => (
     <div style={styles.statsGrid}>
       <StatBox label="TOTAL PLACES" count={counts.places} trend="Global Inventory" color="#FF7A00" onClick={() => setActiveTab('places')} />
       <StatBox label="ACTIVE STATES" count={counts.states} trend="Regional Coverage" color="#3B82F6" onClick={() => setActiveTab('states')} />
-      <StatBox label="BULK TOOL" count="READY" trend="JSON Sync Active" color="#10B981" onClick={() => setActiveTab('bulk')} />
+      <StatBox label="TOP CREATORS" count={counts.creators} trend="Verified Legends" color="#8B5CF6" onClick={() => setActiveTab('creators')} /> {/* 👈 హోమ్ పేజీలో కౌంట్ బాక్స్ */}
     </div>
   </div>
 );
