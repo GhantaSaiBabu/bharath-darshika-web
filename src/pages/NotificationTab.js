@@ -46,16 +46,16 @@ export default function NotificationTab() {
       }));
 
       // 3. ఎక్స్‌పో API కి పంపడం
-      const response = await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: { 
-          'Accept': 'application/json',
-          'Accept-encoding': 'gzip, deflate',
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.REACT_APP_EXPO_ACCESS_TOKEN}`
-        },
-        body: JSON.stringify(messages),
-      });
+const response = await fetch('/api/expo/', { 
+  method: 'POST',
+  headers: { 
+    'Accept': 'application/json',
+    'Accept-encoding': 'gzip, deflate',
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${process.env.REACT_APP_EXPO_ACCESS_TOKEN}`
+  },
+  body: JSON.stringify(messages),
+});
 
       // 4. రెస్పాన్స్ చెక్ చేయడం
       if (!response.ok) {
