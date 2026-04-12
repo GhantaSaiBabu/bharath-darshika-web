@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebaseConfig';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore'; // addDoc, serverTimestamp యాడ్ చేశాను
 import { Send, Users, BellRing, Info, Loader2 } from 'lucide-react';
 
 export default function NotificationTab() {
@@ -36,6 +36,16 @@ export default function NotificationTab() {
         throw new Error("డేటాబేస్‌లో టోకెన్లు ఏవీ దొరకలేదు!");
       }
 
+      // --- 🔥 ఇక్కడ కొత్త లాజిక్: Firestore లో నోటిఫికేషన్ సేవ్ చేయడం (In-App Inbox కోసం) ---
+      await addDoc(collection(db, "Notifications"), {
+        "Headline / Title": notif.title,
+        "Message Details": notif.message,
+        "lastUpdated": serverTimestamp(),
+        "isRead": false,
+        "appName": "Bharath Darshika",
+        "platform": "android"
+      });
+
       // 2. ఎక్స్‌పో పేలోడ్ సిద్ధం చేయడం
       const messages = tokens.map(t => ({ 
         to: t, 
@@ -46,16 +56,16 @@ export default function NotificationTab() {
       }));
 
       // 3. ఎక్స్‌పో API కి పంపడం
-const response = await fetch('/api/expo/', { 
-  method: 'POST',
-  headers: { 
-    'Accept': 'application/json',
-    'Accept-encoding': 'gzip, deflate',
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${process.env.REACT_APP_EXPO_ACCESS_TOKEN}`
-  },
-  body: JSON.stringify(messages),
-});
+      const response = await fetch('/api/expo/', { 
+        method: 'POST',
+        headers: { 
+          'Accept': 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.REACT_APP_EXPO_ACCESS_TOKEN}`
+        },
+        body: JSON.stringify(messages),
+      });
 
       // 4. రెస్పాన్స్ చెక్ చేయడం
       if (!response.ok) {
@@ -66,7 +76,7 @@ const response = await fetch('/api/expo/', {
       const resJson = await response.json();
       console.log("Expo Response:", resJson);
 
-      alert(`బ్రహ్మాండం! ${tokens.length} మందికి నోటిఫికేషన్ వెళ్ళింది. 🚀`);
+      alert(`బ్రహ్మాండం! Firestore లో సేవ్ అయింది మరియు ${tokens.length} మందికి నోటిఫికేషన్ వెళ్ళింది. 🚀`);
       setNotif({ title: '', message: '' });
 
     } catch (e) { 
@@ -145,7 +155,6 @@ const response = await fetch('/api/expo/', {
   );
 }
 
-// Styles remain exactly as you provided for a consistent Corporate UI
 const nStyles = {
   container: { maxWidth: '700px', margin: '0 auto', animation: 'fadeIn 0.5s ease-in' },
   statsCard: { 
